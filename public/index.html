@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>大富豪 v2.1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: sans-serif; text-align: center; margin: 0; padding: 0; }
+    .card {
+      display: inline-block; margin: 4px; padding: 8px;
+      border: 1px solid #000; border-radius: 8px;
+      cursor: pointer; min-width: 30px; font-size: 1.2em;
+    }
+    .card.heart { color: red; }
+    #hand, #field, #messages, #players {
+      margin: 15px; display: flex; flex-wrap: wrap; justify-content: center;
+    }
+    #overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(255,255,255,0.95); display: flex; justify-content: center;
+      align-items: center; flex-direction: column; z-index: 999;
+    }
+    input[type="text"] { font-size: 1.2em; padding: 8px; margin: 5px; }
+    button { font-size: 1.2em; padding: 8px 16px; margin-top: 8px; }
+    #turn, #rankings { margin: 10px 0; font-weight: bold; }
+    #passBtn { display: none; }
+  </style>
+</head>
+<body>
+  <div id="overlay">
+    <h2>名前とパスワードを入力</h2>
+    <input type="text" id="nameInput" placeholder="名前" /><br/>
+    <input type="text" id="passInput" placeholder="パスワード（ひらがな）" /><br/>
+    <button onclick="register()">参加</button>
+    <div id="error" style="color: red;"></div>
+  </div>
+
+  <h1>大富豪 - v2.1</h1>
+  <div id="turn"></div>
+  <div id="rankings"></div>
+  <div><strong>プレイヤー:</strong></div>
+  <div id="players"></div>
+  <div><strong>あなたの手札：</strong></div>
+  <div id="hand"></div>
+  <div><strong>場：</strong></div>
+  <div id="field"></div>
+  <div>
+    <button id="passBtn" onclick="pass()">パス</button>
+  </div>
+  <div id="messages"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let myId = null;
+    let myName = "";
+
+    function register() {
+      const name = document.getElementById('nameInput').value.trim();
+      const password = document.getElementById('passInput').value.trim();
+      if (!name || !password) {
+        document.getElementById('error').textContent = "名前とパスワードを入力してください";
+        return;
+      }
+      if (password !== "なまず") {
+        document.getElementById('error').textContent = "パスワードが間違っています";
+        return;
+      }
+      myName = name;
+      socket.emit('registerName', name);
+      document.getElementById('overlay').style.display = 'none';
+    }
+
+    socket.on('connect', () => { myId = socket.id; });
+
+    socket.on('hand', (hand) => {
+      const handDiv = document.getElementById('hand');
+      handDiv.innerHTML = '';
+      document.getElementById('passBtn').style.display = 'inline-block';
+      hand.sort((a, b) => {
+        const suitOrder = { "♠": 0, "♥": 1, "♦": 2, "♣": 3 };
+        const rankOrder = ['3','4','5','6','7','8','9','10','J','Q','K','A','2'];
+        if (a.suit !== b.suit) return suitOrder[a.suit] - suitOrder[b.suit];
+        return rankOrder.indexOf(a.rank.toString()) - rankOrder.indexOf(b.rank.toString());
+      });
+      hand.forEach(card => {
+        const div = document.createElement('div');
+        div.className = 'card';
+        if (card.suit === '♥') div.classList.add('heart');
+        div.textContent = card.suit + card.rank;
+        div.onclick = () => socket.emit('playCard', card);
+        handDiv.appendChild(div);
+      });
+    });
+
+    socket.on('fieldUpdate', (cards) => {
+      const fieldDiv = document.getElementById('field');
+      fieldDiv.innerHTML = '';
+      cards.forEach(card => {
+        const div = document.createElement('div');
+        div.className = 'card';
+        if (card.suit === '♥') div.classList.add('heart');
+        div.textContent = card.suit + card.rank;
+        fieldDiv.appendChild(div);
+      });
+    });
+
+    socket.on('turn', (playerId, playerName) => {
+      const turnDiv = document.getElementById('turn');
+      if (playerId === myId) {
+        turnDiv.textContent = '🎯 あなたの番です';
+      } else {
+        turnDiv.textContent = `⏳ ${playerName} の番です`;
+      }
+    });
+
+    socket.on('message', (msg) => {
+      document.getElementById('messages').textContent = msg;
+    });
+
+    socket.on('players', (playerList) => {
+      const pDiv = document.getElementById('players');
+      pDiv.innerHTML = playerList.map(p => p.name).join(" / ");
+    });
+
+    socket.on('reset', () => {
+      alert('誰かが切断しました。ゲームをリセットします。');
+      location.reload();
+    });
+
+    socket.on('rankings', (rankingList) => {
+      const rankDiv = document.getElementById('rankings');
+      rankDiv.innerHTML = "🏆 順位: " + rankingList.map((p, i) => `${i + 1}位: ${p.name}`).join(" / ");
+    });
+
+    function pass() {
+      socket.emit('pass');
+    }
+  </script>
+</body>
+</html>
